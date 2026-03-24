@@ -16,6 +16,13 @@ pub struct PaymentRefunded {
     pub amount: i128,
 }
 
+#[contractevent(data_format = "vec", topics = ["ticket_issued"])]
+pub struct TicketIssued {
+    pub ticket_id: u64,
+    pub event_id: Symbol,
+    pub owner: Address,
+}
+
 pub fn emit_payment_received(
     env: &Env,
     payment_id: u64,
@@ -44,6 +51,15 @@ pub fn emit_payment_refunded(
         event_id,
         payer,
         amount,
+    }
+    .publish(env);
+}
+
+pub fn emit_ticket_issued(env: &Env, ticket_id: u64, event_id: Symbol, owner: Address) {
+    TicketIssued {
+        ticket_id,
+        event_id,
+        owner,
     }
     .publish(env);
 }

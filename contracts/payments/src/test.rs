@@ -122,6 +122,15 @@ fn test_pay_for_ticket() {
     assert_eq!(payment.token, token);
     assert_eq!(payment.status, PaymentStatus::Held);
 
+    let owner_tickets = client.get_owner_tickets(&payer);
+    assert_eq!(owner_tickets.len(), 1);
+    let ticket_id = owner_tickets.get(0).unwrap();
+    let ticket = client.get_ticket(&ticket_id);
+    assert_eq!(ticket.ticket_id, ticket_id);
+    assert_eq!(ticket.event_id, event_id);
+    assert_eq!(ticket.owner, payer);
+    assert_eq!(ticket.payment_id, payment_id);
+
     let contract_balance = token_client.balance(&contract_id);
     assert_eq!(contract_balance, amount);
 
@@ -130,6 +139,64 @@ fn test_pay_for_ticket() {
 
     let revenue = client.get_event_revenue(&event_id);
     assert_eq!(revenue, amount);
+}
+
+#[test]
+fn test_payment_issues_ticket_and_links_payment() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, token, client, _contract_id, token_contract) = setup_contract_with_token(&env);
+    let payer = Address::generate(&env);
+    let event_id = symbol_short!("EVENT1");
+    let amount = 100_000_000i128;
+
+    token_contract.mint(&admin, &amount);
+    let token_client = token::Client::new(&env, &token);
+    token_client.transfer(&admin, &payer, &amount);
+
+    let payment_id = client.pay_for_ticket(&payer, &event_id, &amount);
+    let owner_tickets = client.get_owner_tickets(&payer);
+
+    assert_eq!(owner_tickets.len(), 1);
+    let ticket_id = owner_tickets.get(0).unwrap();
+
+    let ticket = client.get_ticket(&ticket_id);
+    assert_eq!(ticket.ticket_id, ticket_id);
+    assert_eq!(ticket.event_id, event_id);
+    assert_eq!(ticket.owner, payer);
+    assert_eq!(ticket.payment_id, payment_id);
+}
+
+#[test]
+fn test_multiple_payments_create_distinct_tickets_for_owner() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, token, client, _contract_id, token_contract) = setup_contract_with_token(&env);
+    let payer = Address::generate(&env);
+    let event_id = symbol_short!("EVENT1");
+    let amount1 = 100_000_000i128;
+    let amount2 = 50_000_000i128;
+
+    token_contract.mint(&admin, &(amount1 + amount2));
+    let token_client = token::Client::new(&env, &token);
+    token_client.transfer(&admin, &payer, &(amount1 + amount2));
+
+    let payment_id_1 = client.pay_for_ticket(&payer, &event_id, &amount1);
+    let payment_id_2 = client.pay_for_ticket(&payer, &event_id, &amount2);
+
+    let owner_tickets = client.get_owner_tickets(&payer);
+    assert_eq!(owner_tickets.len(), 2);
+
+    let ticket_1 = client.get_ticket(&owner_tickets.get(0).unwrap());
+    let ticket_2 = client.get_ticket(&owner_tickets.get(1).unwrap());
+
+    assert_ne!(ticket_1.ticket_id, ticket_2.ticket_id);
+    assert_eq!(ticket_1.owner, payer);
+    assert_eq!(ticket_2.owner, payer);
+    assert_eq!(ticket_1.payment_id, payment_id_1);
+    assert_eq!(ticket_2.payment_id, payment_id_2);
 }
 
 #[test]
