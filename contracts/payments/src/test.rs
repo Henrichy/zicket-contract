@@ -98,6 +98,15 @@ fn setup_contract_with_token(
     (admin, token, client, contract_id, token_client)
 }
 
+fn set_event_status_for_test(
+    client: &PaymentsContractClient<'_>,
+    admin: &Address,
+    event_id: &soroban_sdk::Symbol,
+    status: &EventStatus,
+) {
+    client.set_event_status(admin, event_id, status);
+}
+
 #[test]
 fn test_pay_for_ticket() {
     let env = Env::default();
@@ -410,6 +419,7 @@ fn test_refund_after_withdrawal() {
     token_client.transfer(&admin, &payer, &amount);
 
     let payment_id = client.pay_for_ticket(&payer, &event_id, &amount);
+    set_event_status_for_test(&client, &admin, &event_id, &EventStatus::Completed);
     client.withdraw(&organizer, &event_id);
 
     let result = client.try_refund(&admin, &payment_id);
@@ -440,6 +450,7 @@ fn test_withdraw_happy_path() {
     let pid1 = client.pay_for_ticket(&payer1, &event_id, &amount1);
     let pid2 = client.pay_for_ticket(&payer2, &event_id, &amount2);
 
+    set_event_status_for_test(&client, &admin, &event_id, &EventStatus::Completed);
     client.withdraw(&organizer, &event_id);
 
     assert_eq!(token_client.balance(&organizer), amount1 + amount2);
@@ -497,6 +508,7 @@ fn test_mixed_refund_then_withdraw() {
     assert_eq!(token_client.balance(&payer2), amount2);
 
     // Withdraw remaining
+    set_event_status_for_test(&client, &admin, &event_id, &EventStatus::Completed);
     client.withdraw(&organizer, &event_id);
 
     assert_eq!(token_client.balance(&organizer), amount1 + amount3);
@@ -545,4 +557,71 @@ fn test_refund_nonexistent_payment() {
     let (admin, _token, client, _, _) = setup_contract_with_token(&env);
     let result = client.try_refund(&admin, &999);
     assert_eq!(result.err(), Some(Ok(PaymentError::PaymentNotFound)));
+}
+
+#[test]
+fn test_pay_after_event_completed_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, token, client, _contract_id, token_contract) = setup_contract_with_token(&env);
+    let payer = Address::generate(&env);
+    let event_id = symbol_short!("EVENTCPL");
+    let amount = 100_000_000i128;
+
+    token_contract.mint(&admin, &amount);
+    let token_client = token::Client::new(&env, &token);
+    token_client.transfer(&admin, &payer, &amount);
+
+    set_event_status_for_test(&client, &admin, &event_id, &EventStatus::Completed);
+    let result = client.try_pay_for_ticket(&payer, &event_id, &amount);
+    assert_eq!(result.err(), Some(Ok(PaymentError::EventNotActive)));
+}
+
+#[test]
+fn test_withdraw_before_completion_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, token, client, _contract_id, token_contract) = setup_contract_with_token(&env);
+    let payer = Address::generate(&env);
+    let organizer = Address::generate(&env);
+    let event_id = symbol_short!("EVENTACT");
+    let amount = 100_000_000i128;
+
+    token_contract.mint(&admin, &amount);
+    let token_client = token::Client::new(&env, &token);
+    token_client.transfer(&admin, &payer, &amount);
+
+    set_event_status_for_test(&client, &admin, &event_id, &EventStatus::Active);
+    client.pay_for_ticket(&payer, &event_id, &amount);
+
+    let result = client.try_withdraw(&organizer, &event_id);
+    assert_eq!(result.err(), Some(Ok(PaymentError::EventNotCompleted)));
+}
+
+#[test]
+fn test_refund_on_cancelled_event_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (admin, token, client, contract_id, token_contract) = setup_contract_with_token(&env);
+    let payer = Address::generate(&env);
+    let event_id = symbol_short!("EVENTCAN");
+    let amount = 100_000_000i128;
+
+    token_contract.mint(&admin, &amount);
+    let token_client = token::Client::new(&env, &token);
+    token_client.transfer(&admin, &payer, &amount);
+
+    set_event_status_for_test(&client, &admin, &event_id, &EventStatus::Active);
+    let payment_id = client.pay_for_ticket(&payer, &event_id, &amount);
+
+    set_event_status_for_test(&client, &admin, &event_id, &EventStatus::Cancelled);
+    client.refund(&admin, &payment_id);
+
+    let payment = client.get_payment(&payment_id);
+    assert_eq!(payment.status, PaymentStatus::Refunded);
+    assert_eq!(token_client.balance(&payer), amount);
+    assert_eq!(token_client.balance(&contract_id), 0);
 }
