@@ -11,6 +11,7 @@ pub trait EventContractTrait {
     ) -> Result<(), crate::errors::FactoryError>;
 }
 
+#[allow(dead_code)]
 pub fn deploy_event(
     env: &Env,
     organizer: &Address,
@@ -25,7 +26,7 @@ pub fn deploy_event(
         .deploy_v2(wasm_hash.clone(), ());
 
     let client = EventClient::new(env, &deployed_address);
-    let _ = client.initialize(organizer, ticket_contract, payments_contract);
+    client.initialize(organizer, ticket_contract, payments_contract);
 
     deployed_address
 }
