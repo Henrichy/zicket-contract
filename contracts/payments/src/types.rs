@@ -19,6 +19,14 @@ pub enum PaymentStatus {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EscrowMetadata {
+    pub organizer: Address,
+    pub event_end_time: u64,
+    pub auto_released: bool,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PaymentPrivacy {
     Anonymous = 0,
     Private = 1,

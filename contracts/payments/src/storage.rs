@@ -1,5 +1,5 @@
 use crate::errors::PaymentError;
-use crate::types::{EventStatus, PaymentRecord, Ticket};
+use crate::types::{EscrowMetadata, EventStatus, PaymentRecord, Ticket};
 use soroban_sdk::{contracttype, Address, Env, Symbol, Vec};
 
 #[contracttype]
@@ -34,6 +34,7 @@ pub enum DataKey {
     WithdrawalHistory(Symbol),
     NextPaymentId,
     NextTicketId,
+    EscrowMeta(Symbol),
 }
 
 pub fn set_event_status(env: &Env, event_id: &Symbol, status: &EventStatus) {
@@ -343,4 +344,19 @@ pub fn get_withdrawal_history(env: &Env, event_id: &Symbol) -> Vec<crate::types:
 pub fn reset_event_revenue(env: &Env, event_id: &Symbol) {
     let key = DataKey::EventRevenue(event_id.clone());
     env.storage().persistent().set(&key, &0i128);
+}
+
+pub fn set_escrow_meta(env: &Env, event_id: &Symbol, meta: &EscrowMetadata) {
+    let key = DataKey::EscrowMeta(event_id.clone());
+    env.storage().persistent().set(&key, meta);
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, 60 * 60 * 24 * 30, 60 * 60 * 24 * 30 * 2);
+}
+
+pub fn get_escrow_meta(env: &Env, event_id: &Symbol) -> Result<EscrowMetadata, PaymentError> {
+    env.storage()
+        .persistent()
+        .get(&DataKey::EscrowMeta(event_id.clone()))
+        .ok_or(PaymentError::EscrowNotConfigured)
 }

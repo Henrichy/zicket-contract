@@ -362,6 +362,80 @@ impl PaymentsContract {
         storage::get_event_payments(&env, &event_id)
     }
 
+    /// Register escrow metadata for an event. Admin only.
+    /// Must be called before release_if_expired can be used.
+    pub fn set_event_end_time(
+        env: Env,
+        admin: Address,
+        event_id: Symbol,
+        organizer: Address,
+        event_end_time: u64,
+    ) -> Result<(), PaymentError> {
+        let stored_admin = storage::get_admin(&env)?;
+        if admin != stored_admin {
+            return Err(PaymentError::Unauthorized);
+        }
+        admin.require_auth();
+
+        let meta = EscrowMetadata {
+            organizer,
+            event_end_time,
+            auto_released: false,
+        };
+        storage::set_escrow_meta(&env, &event_id, &meta);
+        Ok(())
+    }
+
+    /// Release escrowed funds to the organizer if the event end time has passed.
+    /// Permissionless: anyone can trigger this after expiry.
+    /// Idempotent: calling after already released returns EscrowAlreadyReleased.
+    pub fn release_if_expired(env: Env, event_id: Symbol) -> Result<(), PaymentError> {
+        let mut meta = storage::get_escrow_meta(&env, &event_id)?;
+
+        if meta.auto_released {
+            return Err(PaymentError::EscrowAlreadyReleased);
+        }
+
+        if env.ledger().timestamp() < meta.event_end_time {
+            return Err(PaymentError::EscrowNotExpired);
+        }
+
+        let token_address = storage::get_accepted_token(&env)?;
+        let token_client = token::Client::new(&env, &token_address);
+        let payment_ids = storage::get_event_payments(&env, &event_id);
+
+        let mut total: i128 = 0;
+        let mut to_release: soroban_sdk::Vec<PaymentRecord> = soroban_sdk::Vec::new(&env);
+
+        for i in 0..payment_ids.len() {
+            let pid = payment_ids.get(i).unwrap();
+            let payment = storage::get_payment(&env, pid)?;
+            if payment.status == PaymentStatus::Held {
+                total += payment.amount;
+                to_release.push_back(payment);
+            }
+        }
+
+        if total > 0 {
+            token_client.transfer(&env.current_contract_address(), &meta.organizer, &total);
+
+            for i in 0..to_release.len() {
+                let mut payment = to_release.get(i).unwrap();
+                payment.status = PaymentStatus::Released;
+                storage::update_payment(&env, &payment)?;
+            }
+
+            storage::set_event_revenue(&env, &event_id, 0);
+        }
+
+        meta.auto_released = true;
+        storage::set_escrow_meta(&env, &event_id, &meta);
+
+        events::emit_escrow_auto_released(&env, event_id, meta.organizer, total);
+
+        Ok(())
+    }
+
     /// Withdraw revenue for an event.
     pub fn withdraw_revenue(env: Env, event_id: Symbol, to: Address) -> Result<(), PaymentError> {
         let admin = storage::get_admin(&env)?;
