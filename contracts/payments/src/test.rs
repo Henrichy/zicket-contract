@@ -413,7 +413,10 @@ fn test_refund_after_withdrawal() {
     client.withdraw(&organizer, &event_id);
 
     let result = client.try_refund(&admin, &payment_id);
-    assert_eq!(result.err(), Some(Ok(PaymentError::PaymentAlreadyProcessed)));
+    assert_eq!(
+        result.err(),
+        Some(Ok(PaymentError::PaymentAlreadyProcessed))
+    );
 }
 
 #[test]

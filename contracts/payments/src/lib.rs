@@ -118,7 +118,11 @@ impl PaymentsContract {
         }
 
         let token_client = token::Client::new(&env, &payment.token);
-        token_client.transfer(&env.current_contract_address(), &payment.payer, &payment.amount);
+        token_client.transfer(
+            &env.current_contract_address(),
+            &payment.payer,
+            &payment.amount,
+        );
 
         payment.status = PaymentStatus::Refunded;
         storage::update_payment(&env, &payment)?;
@@ -137,11 +141,7 @@ impl PaymentsContract {
         Ok(())
     }
 
-    pub fn withdraw(
-        env: Env,
-        organizer: Address,
-        event_id: Symbol,
-    ) -> Result<(), PaymentError> {
+    pub fn withdraw(env: Env, organizer: Address, event_id: Symbol) -> Result<(), PaymentError> {
         organizer.require_auth();
 
         let revenue = storage::get_event_revenue(&env, &event_id);
