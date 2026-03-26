@@ -49,6 +49,22 @@ impl PaymentsContract {
         storage::get_owner_tickets(&env, &owner)
     }
 
+    /// Set the current lifecycle status for an event.
+    pub fn set_event_status(
+        env: Env,
+        admin: Address,
+        event_id: Symbol,
+        status: EventStatus,
+    ) -> Result<(), PaymentError> {
+        let stored_admin = storage::get_admin(&env)?;
+        if admin != stored_admin {
+            return Err(PaymentError::Unauthorized);
+        }
+        admin.require_auth();
+        storage::set_event_status(&env, &event_id, &status);
+        Ok(())
+    }
+
     /// Pay for a ticket. Transfers tokens from payer to contract escrow.
     pub fn pay_for_ticket(
         env: Env,
@@ -60,6 +76,12 @@ impl PaymentsContract {
 
         if amount <= 0 {
             return Err(PaymentError::InvalidAmount);
+        }
+
+        if let Some(status) = storage::get_event_status(&env, &event_id) {
+            if matches!(status, EventStatus::Completed | EventStatus::Cancelled) {
+                return Err(PaymentError::EventNotActive);
+            }
         }
 
         let token_address = storage::get_accepted_token(&env)?;
@@ -143,6 +165,11 @@ impl PaymentsContract {
 
     pub fn withdraw(env: Env, organizer: Address, event_id: Symbol) -> Result<(), PaymentError> {
         organizer.require_auth();
+
+        match storage::get_event_status(&env, &event_id) {
+            Some(EventStatus::Completed) => {}
+            _ => return Err(PaymentError::EventNotCompleted),
+        }
 
         let revenue = storage::get_event_revenue(&env, &event_id);
         if revenue <= 0 {
