@@ -494,10 +494,11 @@ fn test_withdraw_no_revenue() {
     let env = Env::default();
     env.mock_all_auths();
 
-    let (_admin, _token, client, _, _) = setup_contract_with_token(&env);
+    let (admin, _token, client, _, _) = setup_contract_with_token(&env);
     let organizer = Address::generate(&env);
     let event_id = symbol_short!("EVENT1");
 
+    set_event_status_for_test(&client, &admin, &event_id, &EventStatus::Completed);
     let result = client.try_withdraw(&organizer, &event_id);
     assert_eq!(result.err(), Some(Ok(PaymentError::NoRevenue)));
 }
