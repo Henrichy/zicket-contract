@@ -117,3 +117,19 @@ pub fn emit_ticket_issued(
     }
     .publish(env);
 }
+
+#[contractevent(data_format = "vec", topics = ["escrow_released"])]
+pub struct EscrowAutoReleased {
+    pub event_id: Symbol,
+    pub organizer: Address,
+    pub amount: i128,
+}
+
+pub fn emit_escrow_auto_released(env: &Env, event_id: Symbol, organizer: Address, amount: i128) {
+    EscrowAutoReleased {
+        event_id,
+        organizer,
+        amount,
+    }
+    .publish(env);
+}

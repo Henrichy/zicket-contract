@@ -1,5 +1,5 @@
 use crate::errors::PaymentError;
-use crate::types::{EventStatus, PaymentRecord, PrivacyLevel, Ticket};
+use crate::types::{EscrowMetadata, EventStatus, PaymentRecord, PrivacyLevel, Ticket};
 use soroban_sdk::{contracttype, Address, Env, Symbol, Vec};
 
 #[contracttype]
@@ -35,6 +35,7 @@ pub enum DataKey {
     NextPaymentId,
     NextTicketId,
     EmissionPrivacy(Symbol),
+    EscrowMeta(Symbol),
 }
 
 pub fn set_event_status(env: &Env, event_id: &Symbol, status: &EventStatus) {
@@ -359,4 +360,19 @@ pub fn get_emission_privacy(env: &Env, event_id: &Symbol) -> PrivacyLevel {
         .persistent()
         .get(&DataKey::EmissionPrivacy(event_id.clone()))
         .unwrap_or(PrivacyLevel::Standard)
+}
+
+pub fn set_escrow_meta(env: &Env, event_id: &Symbol, meta: &EscrowMetadata) {
+    let key = DataKey::EscrowMeta(event_id.clone());
+    env.storage().persistent().set(&key, meta);
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, 60 * 60 * 24 * 30, 60 * 60 * 24 * 30 * 2);
+}
+
+pub fn get_escrow_meta(env: &Env, event_id: &Symbol) -> Result<EscrowMetadata, PaymentError> {
+    env.storage()
+        .persistent()
+        .get(&DataKey::EscrowMeta(event_id.clone()))
+        .ok_or(PaymentError::EscrowNotConfigured)
 }

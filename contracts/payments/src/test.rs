@@ -541,6 +541,159 @@ fn test_multiple_withdrawals_tracked() {
 }
 
 // ============================================================
+// Issue #43: Escrow Timeout / Auto-Release Tests
+// ============================================================
+
+#[test]
+fn test_set_event_end_time_success() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_admin, _token, client, _contract_id, _token_contract) = setup_contract_with_token(&env);
+    let organizer = Address::generate(&env);
+    let event_id = symbol_short!("EVENT1");
+    let event_end_time: u64 = 1704067200 + 86_400;
+
+    let admin = _admin;
+    client.set_event_end_time(&admin, &event_id, &organizer, &event_end_time);
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = 1704067200;
+    });
+    let result = client.try_release_if_expired(&event_id);
+    assert_eq!(result.err(), Some(Ok(PaymentError::EscrowNotExpired)));
+}
+
+#[test]
+fn test_release_if_expired_before_deadline_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| {
+        li.timestamp = 1704067200;
+    });
+
+    let (admin, token, client, _contract_id, token_contract) = setup_contract_with_token(&env);
+    let payer = Address::generate(&env);
+    let organizer = Address::generate(&env);
+    let event_id = symbol_short!("EVENT1");
+    let amount = 100_000_000i128;
+    let event_end_time: u64 = env.ledger().timestamp() + 86_400;
+
+    token_contract.mint(&admin, &amount);
+    let token_client = token::Client::new(&env, &token);
+    token_client.transfer(&admin, &payer, &amount);
+    client.pay_for_ticket(&payer, &event_id, &amount, &PaymentPrivacy::Standard);
+
+    client.set_event_end_time(&admin, &event_id, &organizer, &event_end_time);
+
+    let result = client.try_release_if_expired(&event_id);
+    assert_eq!(result.err(), Some(Ok(PaymentError::EscrowNotExpired)));
+}
+
+#[test]
+fn test_release_if_expired_after_deadline_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| {
+        li.timestamp = 1704067200;
+    });
+
+    let (admin, token, client, contract_id, token_contract) = setup_contract_with_token(&env);
+    let payer = Address::generate(&env);
+    let organizer = Address::generate(&env);
+    let event_id = symbol_short!("EVENT1");
+    let amount = 100_000_000i128;
+    let event_end_time: u64 = env.ledger().timestamp() + 86_400;
+
+    token_contract.mint(&admin, &amount);
+    let token_client = token::Client::new(&env, &token);
+    token_client.transfer(&admin, &payer, &amount);
+    client.pay_for_ticket(&payer, &event_id, &amount, &PaymentPrivacy::Standard);
+
+    client.set_event_end_time(&admin, &event_id, &organizer, &event_end_time);
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = event_end_time + 1;
+    });
+
+    client.release_if_expired(&event_id);
+
+    assert_eq!(token_client.balance(&contract_id), 0);
+    assert_eq!(token_client.balance(&organizer), amount);
+    assert_eq!(client.get_event_revenue(&event_id), 0);
+}
+
+#[test]
+fn test_release_if_expired_no_double_payout() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| {
+        li.timestamp = 1704067200;
+    });
+
+    let (admin, token, client, _contract_id, token_contract) = setup_contract_with_token(&env);
+    let payer = Address::generate(&env);
+    let organizer = Address::generate(&env);
+    let event_id = symbol_short!("EVENT1");
+    let amount = 100_000_000i128;
+    let event_end_time: u64 = env.ledger().timestamp() + 86_400;
+
+    token_contract.mint(&admin, &amount);
+    let token_client = token::Client::new(&env, &token);
+    token_client.transfer(&admin, &payer, &amount);
+    client.pay_for_ticket(&payer, &event_id, &amount, &PaymentPrivacy::Standard);
+
+    client.set_event_end_time(&admin, &event_id, &organizer, &event_end_time);
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = event_end_time + 1;
+    });
+
+    client.release_if_expired(&event_id);
+
+    let result = client.try_release_if_expired(&event_id);
+    assert_eq!(result.err(), Some(Ok(PaymentError::EscrowAlreadyReleased)));
+    assert_eq!(token_client.balance(&organizer), amount);
+}
+
+#[test]
+fn test_release_if_expired_not_configured() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (_admin, _token, client, _contract_id, _token_contract) = setup_contract_with_token(&env);
+    let event_id = symbol_short!("EVENT1");
+
+    let result = client.try_release_if_expired(&event_id);
+    assert_eq!(result.err(), Some(Ok(PaymentError::EscrowNotConfigured)));
+}
+
+#[test]
+fn test_release_if_expired_no_held_funds_still_marks_released() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|li| {
+        li.timestamp = 1704067200;
+    });
+
+    let (admin, _token, client, _contract_id, _token_contract) = setup_contract_with_token(&env);
+    let organizer = Address::generate(&env);
+    let event_id = symbol_short!("EVENT1");
+    let event_end_time: u64 = env.ledger().timestamp() + 86_400;
+
+    client.set_event_end_time(&admin, &event_id, &organizer, &event_end_time);
+
+    env.ledger().with_mut(|li| {
+        li.timestamp = event_end_time + 1;
+    });
+
+    client.release_if_expired(&event_id);
+
+    let result = client.try_release_if_expired(&event_id);
+    assert_eq!(result.err(), Some(Ok(PaymentError::EscrowAlreadyReleased)));
+}
+
+// ============================================================
 // Issue #53: Privacy-Preserving Event Emissions Tests
 // ============================================================
 

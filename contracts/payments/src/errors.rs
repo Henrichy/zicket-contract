@@ -22,4 +22,7 @@ pub enum PaymentError {
     EventNotActive = 16,
     EventNotCompleted = 17,
     RefundNotAllowed = 18,
+    EscrowNotExpired = 19,
+    EscrowAlreadyReleased = 20,
+    EscrowNotConfigured = 21,
 }
