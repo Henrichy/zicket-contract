@@ -40,6 +40,7 @@ fn create_payment(
     amount: i128,
     is_anonymous: bool,
     is_verified: bool,
+    privacy_level: PaymentPrivacy,
 ) -> Result<u64, PaymentError> {
     payer.require_auth();
 
@@ -72,6 +73,7 @@ fn create_payment(
         token: token_address.clone(),
         status: PaymentStatus::Held,
         paid_at,
+        privacy_level: privacy_level.clone(),
     };
 
     storage::save_payment(&env, &payment);
@@ -86,6 +88,7 @@ fn create_payment(
         amount,
         token_address.clone(),
         paid_at,
+        privacy_level,
     );
 
     let ticket_id = storage::get_next_ticket_id(&env);
@@ -173,8 +176,9 @@ impl PaymentsContract {
         payer: Address,
         event_id: Symbol,
         amount: i128,
+        privacy_level: PaymentPrivacy,
     ) -> Result<u64, PaymentError> {
-        create_payment(env, payer, event_id, amount, false, false)
+        create_payment(env, payer, event_id, amount, false, false, privacy_level)
     }
 
     pub fn pay_for_ticket_with_options(
@@ -185,7 +189,15 @@ impl PaymentsContract {
         is_anonymous: bool,
         is_verified: bool,
     ) -> Result<u64, PaymentError> {
-        create_payment(env, payer, event_id, amount, is_anonymous, is_verified)
+        create_payment(
+            env,
+            payer,
+            event_id,
+            amount,
+            is_anonymous,
+            is_verified,
+            PaymentPrivacy::Standard,
+        )
     }
 
     pub fn sync_event_privacy(

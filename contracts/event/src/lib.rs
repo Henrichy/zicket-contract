@@ -1,5 +1,5 @@
 #![no_std]
-use payments_contract::PaymentsContractClient;
+use payments_contract::{PaymentPrivacy, PaymentsContractClient};
 use soroban_sdk::{contract, contractimpl, Address, Env, Symbol};
 use ticket_contract::TicketContractClient;
 
@@ -526,7 +526,7 @@ impl EventContract {
         attendee: Address,
         event_id: Symbol,
         tier_id: u32,
-        is_verified: bool,
+        _is_verified: bool,
     ) -> Result<(), EventError> {
         attendee.require_auth();
 
@@ -582,13 +582,11 @@ impl EventContract {
 
         if tier.price > 0 {
             let payments_client = PaymentsContractClient::new(&env, &payments_contract);
-            // This call must succeed before minting and local registration persist.
-            payments_client.pay_for_ticket_with_options(
+            payments_client.pay_for_ticket(
                 &attendee,
                 &event_id,
                 &tier.price,
-                &false,
-                &is_verified,
+                &PaymentPrivacy::Standard,
             );
         }
 
